@@ -565,7 +565,7 @@ class CAR(Platforms):
                      car_parts=CarParts.common([CarHarness.hyundai_p]))
     ],
     CarSpecs(mass=2055, wheelbase=2.9, steerRatio=16, tireStiffnessFactor=0.65),
-    flags=HyundaiFlags.EV | HyundaiFlags.ANGLE_CONTROL | HyundaiFlags.CCNC,
+    flags=HyundaiFlags.EV | HyundaiFlags.CCNC,
   )
   KIA_CARNIVAL_4TH_GEN = HyundaiCanFDPlatformConfig(
     [
