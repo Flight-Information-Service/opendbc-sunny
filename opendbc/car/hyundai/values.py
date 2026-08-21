@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass, field
-from enum import IntFlag
+from enum import Enum, IntFlag
 
 from opendbc.car import Bus, CarSpecs, DbcDict, PlatformConfig, Platforms, uds
 from opendbc.car.lateral import AngleSteeringLimitsVM
@@ -92,6 +92,19 @@ class HyundaiSafetyFlags(IntFlag):
   CCNC = 2048
 
 
+class ActvACISta(Enum):
+  # LFA_ALT (0xCB) ADAS_ActvACISta / ADAS_ActvACILvl2Sta states
+  INIT = 0
+  INACTIVE = 1
+  ACTIVE35_ACTIVE = 2
+
+
+class ESA_ActvSta(Enum):
+  # LFA_ALT (0xCB) FCA_ESA_ActvSta states
+  INACTIVE = 0
+  ACTIVE = 1
+
+
 # Hyundai/Kia/Genesis SCC (Smart Cruise Control) and steering architecture:
 #
 # CAN cars:
@@ -174,6 +187,11 @@ class HyundaiFlags(IntFlag):
   CANFD_ANGLE_STEERING = 2 ** 27
 
   CCNC = 2 ** 28
+
+  # HDA1 + LFA2 cars whose stock system commands steering via LFA_ALT (0xCB) on E-CAN
+  # instead of the standard LFA (0x12A) message. Only set this on platforms verified
+  # to require LFA_ALT; cars like KIA_EV6_2025 steer fine through LFA.
+  CANFD_LFA_ALT_STEERING = 2 ** 29
 
 
 @dataclass
