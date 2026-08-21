@@ -728,6 +728,14 @@ class CAR(Platforms):
     CarSpecs(mass=2055, wheelbase=2.9, steerRatio=16, tireStiffnessFactor=0.65),
     flags=HyundaiFlags.EV | HyundaiFlags.CANFD_ANGLE_STEERING,
   )
+  KIA_EV3 = HyundaiCanFDPlatformConfig(
+    [
+      HyundaiCarDocs("Kia EV3 (with LFA2) 2024-26", "Lane Follow Assist 2", car_parts=CarParts.common([CarHarness.hyundai_a]))
+    ],
+    # TODO: steerRatio is a placeholder, needs validation on a real car
+    CarSpecs(mass=1885, wheelbase=2.68, steerRatio=14.0),
+    flags=HyundaiFlags.EV | HyundaiFlags.CANFD_ANGLE_STEERING | HyundaiFlags.CCNC,
+  )
   KIA_EV9 = HyundaiCanFDPlatformConfig(
     [
       HyundaiCarDocs("Kia EV9 2025-26", car_parts=CarParts.common([CarHarness.hyundai_r]))

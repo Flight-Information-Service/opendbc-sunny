@@ -106,7 +106,8 @@ class TestHyundaiFingerprint(unittest.TestCase):
     for car_model in CAR:
       if not (car_model.config.flags & HyundaiFlags.CANFD):
         continue
-      ecus = {fw[0] for fw in FW_VERSIONS[car_model].keys()}
+      # KIA_EV3 has no FW versions collected yet
+      ecus = {fw[0] for fw in FW_VERSIONS.get(car_model, {}).keys()}
       ecus_not_in_whitelist = ecus - CANFD_EXPECTED_ECUS
       ecu_strings = ", ".join([f"Ecu.{ecu}" for ecu in ecus_not_in_whitelist])
       assert len(ecus_not_in_whitelist) == 0, \

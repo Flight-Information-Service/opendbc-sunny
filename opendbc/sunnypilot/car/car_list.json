@@ -2242,6 +2242,18 @@
     ],
     "package": "No Smart Cruise Control (Non-SCC)"
   },
+  "Kia EV3 (with LFA2) 2024-26": {
+    "platform": "KIA_EV3",
+    "make": "Kia",
+    "brand": "hyundai",
+    "model": "EV3 (with LFA2)",
+    "year": [
+      "2024",
+      "2025",
+      "2026"
+    ],
+    "package": "Lane Follow Assist 2"
+  },
   "Kia EV6 (Southeast Asia only) 2022-24": {
     "platform": "KIA_EV6",
     "make": "Kia",
