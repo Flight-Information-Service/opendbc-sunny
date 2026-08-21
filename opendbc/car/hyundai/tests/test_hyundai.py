@@ -22,6 +22,7 @@ NO_DATES_PLATFORMS = {
   # CAN FD
   CAR.KIA_SPORTAGE_5TH_GEN,
   CAR.KIA_SPORTAGE_HEV_2026, # no date on camera
+  CAR.KIA_EV3, # new-gen FW format without dates
   CAR.HYUNDAI_SANTA_CRUZ_1ST_GEN,
   CAR.HYUNDAI_SANTA_CRUZ_2025,
   CAR.HYUNDAI_TUCSON_4TH_GEN,
@@ -106,8 +107,7 @@ class TestHyundaiFingerprint(unittest.TestCase):
     for car_model in CAR:
       if not (car_model.config.flags & HyundaiFlags.CANFD):
         continue
-      # KIA_EV3 has no FW versions collected yet
-      ecus = {fw[0] for fw in FW_VERSIONS.get(car_model, {}).keys()}
+      ecus = {fw[0] for fw in FW_VERSIONS[car_model].keys()}
       ecus_not_in_whitelist = ecus - CANFD_EXPECTED_ECUS
       ecu_strings = ", ".join([f"Ecu.{ecu}" for ecu in ecus_not_in_whitelist])
       assert len(ecus_not_in_whitelist) == 0, \
@@ -206,7 +206,7 @@ class TestHyundaiFingerprint(unittest.TestCase):
           else:
             assert all(date is not None for _, date in codes)
 
-          if car_model in (CAR.HYUNDAI_GENESIS, CAR.KIA_SPORTAGE_HEV_2026):
+          if car_model in (CAR.HYUNDAI_GENESIS, CAR.KIA_SPORTAGE_HEV_2026, CAR.KIA_EV3):
             raise unittest.SkipTest("No part numbers for car model")
 
           # Hyundai places the ECU part number in their FW versions, assert all parsable

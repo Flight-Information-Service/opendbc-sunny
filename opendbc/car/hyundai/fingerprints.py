@@ -1117,6 +1117,14 @@ FW_VERSIONS = {
       b'\xf1\x00CV1 MFC  AT USA LHD 1.00 1.06 99210-CV000 220328',
     ],
   },
+  CAR.KIA_EV3: {
+    (Ecu.fwdRadar, 0x7d0, None): [
+      b'\xf1\x00SV1__               1.00 1.03 99110EV700          ',
+    ],
+    (Ecu.fwdCamera, 0x7c4, None): [
+      b'\xf1\x00SV11.011.041.012481000HKP_SV124_40819299211EV000',
+    ],
+  },
   CAR.KIA_EV6_2025: {
     (Ecu.fwdRadar, 0x7d0, None): [
       b'\xf1\x00CV__ RDR -----      1.00 1.00 99110-XG500         ',
