@@ -40,7 +40,7 @@ class CanBus(CanBusBase):
 def create_steering_messages(packer, CP, CAN, enabled, lat_active, apply_torque, apply_angle, lkas_icon):
   values = {
     "LKA_OptUsmSta": 2,
-    "LKA_SysIndReq": 2 if enabled else 1,
+    "LKA_SysIndReq": lkas_icon,
     "StrTqReqVal": apply_torque,
     "LKA_SysWrn": 0,
     "ActToiSta": 1 if lat_active else 0,

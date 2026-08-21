@@ -386,9 +386,9 @@ class TestHyundaiCanfdAngleSteering(TestHyundaiCanfdBase, common.AngleSteeringSa
 
 class TestHyundaiCanfdLFASteeringBase(TestHyundaiCanfdTorqueSteering):
 
-  TX_MSGS = [[0x12A, 0], [0x1A0, 1], [0x1CF, 0], [0x1E0, 0], [0xCB, 0]]
-  RELAY_MALFUNCTION_ADDRS = {0: (0x12A, 0x1E0, 0xCB)}  # LFA, LFAHDA_CLUSTER, LFA_ALT
-  FWD_BLACKLISTED_ADDRS = {2: [0x12A, 0x1E0, 0xCB]}
+  TX_MSGS = [[0x12A, 0], [0x1A0, 1], [0x1CF, 0], [0x1E0, 0]]
+  RELAY_MALFUNCTION_ADDRS = {0: (0x12A, 0x1E0)}  # LFA, LFAHDA_CLUSTER
+  FWD_BLACKLISTED_ADDRS = {2: [0x12A, 0x1E0]}
 
   STEER_MSG = "LFA"
   BUTTONS_TX_BUS = 2
@@ -554,6 +554,66 @@ class TestHyundaiCanfdLKASteeringAltAngle(TestHyundaiCanfdAngleSteering):
     pass
 
 
+class TestHyundaiCanfdLFASteeringAngleLFAAlt(TestHyundaiCanfdAngleSteering):
+  # HDA1 + LFA2 cars that steer by angle through LFA_ALT (0xCB) instead of LFA (0x12A)
+
+  TX_MSGS = [[0x12A, 0], [0x1A0, 1], [0x1CF, 0], [0x1E0, 0], [0xCB, 0]]
+  RELAY_MALFUNCTION_ADDRS = {0: (0x12A, 0x1E0)}
+  FWD_BLACKLISTED_ADDRS = {2: [0x12A, 0x1E0, 0xCB]}
+
+  STEER_MSG = "LFA_ALT"
+  BUTTONS_TX_BUS = 2
+  SCC_BUS = 0
+  GAS_MSG = ("ACCELERATOR", "ACCELERATOR_PEDAL")
+
+  def setUp(self):
+    self.packer = CANPackerSafety("hyundai_canfd_generated")
+    self.safety = libsafety_py.libsafety
+    self.safety.set_safety_hooks(CarParams.SafetyModel.hyundaiCanfd, HyundaiSafetyFlags.EV_GAS |
+                                 HyundaiSafetyFlags.CANFD_ANGLE_STEERING | HyundaiSafetyFlags.CANFD_LFA_ALT_STEERING)
+    self.safety.init_tests()
+
+  def _angle_cmd_msg(self, angle: float, enabled: bool, increment_timer: bool = True, gain: float = 0.0):
+    if increment_timer:
+      self.safety.set_timer(self.cnt_angle_cmd * int(1e6 / self.LATERAL_FREQUENCY))
+      self.__class__.cnt_angle_cmd += 1
+    values = {"ADAS_StrAnglReqVal": angle, "ADAS_ActvACILvl2Sta": 2 if enabled else 1,
+              "ADAS_ACIAnglTqRedcGainVal": gain}
+    return self.packer.make_can_msg_safety("LFA_ALT", 0, values)
+
+  def test_lfa_alt_requires_flag(self):
+    # without HYUNDAI_PARAM_CANFD_LFA_ALT_STEERING, sending 0xCB must be rejected
+    self.safety.set_safety_hooks(CarParams.SafetyModel.hyundaiCanfd,
+                                 HyundaiSafetyFlags.EV_GAS | HyundaiSafetyFlags.CANFD_ANGLE_STEERING)
+    self.safety.init_tests()
+    self.assertFalse(self._tx(self._angle_cmd_msg(0, False)))
+
+  # Angle steering does not use torque — override inherited torque tests
+  def test_steer_safety_check(self):
+    pass
+
+  def test_non_realtime_limit_up(self):
+    pass
+
+  def test_steer_req_bit(self):
+    pass
+
+  def test_steer_req_bit_frames(self):
+    pass
+
+  def test_steer_req_bit_multi_invalid(self):
+    pass
+
+  def test_steer_req_bit_realtime(self):
+    pass
+
+  def test_against_torque_driver(self):
+    pass
+
+  def test_realtime_limits(self):
+    pass
+
+
 class TestHyundaiCanfdLKASteeringLongEV(HyundaiLongitudinalBase, TestHyundaiCanfdLKASteeringEV):
 
   TX_MSGS = [[0x50, 0], [0x1CF, 1], [0x2A4, 0], [0x51, 0], [0x730, 1], [0x12a, 1], [0x160, 1],
@@ -590,9 +650,9 @@ class TestHyundaiCanfdLKASteeringLongEV(HyundaiLongitudinalBase, TestHyundaiCanf
 # Tests longitudinal for ICE, hybrid, EV cars with LFA steering
 class TestHyundaiCanfdLFASteeringLongBase(HyundaiLongitudinalBase, TestHyundaiCanfdLFASteeringBase):
 
-  FWD_BLACKLISTED_ADDRS = {2: [0x12a, 0x1e0, 0x1a0, 0x160, 0xcb]}
+  FWD_BLACKLISTED_ADDRS = {2: [0x12a, 0x1e0, 0x1a0, 0x160]}
 
-  RELAY_MALFUNCTION_ADDRS = {0: (0x12A, 0x1E0, 0x1a0, 0x160, 0xCB)}  # LFA, LFAHDA_CLUSTER, SCC_CONTROL, ADRV_0x160, LFA_ALT
+  RELAY_MALFUNCTION_ADDRS = {0: (0x12A, 0x1E0, 0x1a0, 0x160)}  # LFA, LFAHDA_CLUSTER, SCC_CONTROL, ADRV_0x160
 
   DISABLED_ECU_UDS_MSG = (0x7D0, 0)
   DISABLED_ECU_ACTUATION_MSG = (0x1a0, 0)
@@ -681,9 +741,9 @@ class HyundaiCanfdCCNCTest:
 @parameterized_class(CAMERA_SCC_COMBOS)
 class TestHyundaiCanfdLFASteeringCCNC(HyundaiCanfdCCNCTest, TestHyundaiCanfdLFASteeringBase):
 
-  TX_MSGS = [[0x12A, 0], [0x1E0, 0], [0x1CF, 2], [0x7C4, 2], [0xCB, 0]]
-  RELAY_MALFUNCTION_ADDRS = {0: (0x12A, 0x1E0, 0x161, 0x162, 0xCB), 2: (0x7C4, 0xEA)}
-  FWD_BLACKLISTED_ADDRS = {2: [0x12A, 0x1E0, 0x161, 0x162, 0xCB], 0: [0x7C4, 0xEA]}
+  TX_MSGS = [[0x12A, 0], [0x1E0, 0], [0x1CF, 2], [0x7C4, 2]]
+  RELAY_MALFUNCTION_ADDRS = {0: (0x12A, 0x1E0, 0x161, 0x162), 2: (0x7C4, 0xEA)}
+  FWD_BLACKLISTED_ADDRS = {2: [0x12A, 0x1E0, 0x161, 0x162], 0: [0x7C4, 0xEA]}
 
 
 @parameterized_class(CAMERA_SCC_COMBOS)
@@ -691,9 +751,9 @@ class TestHyundaiCanfdLFASteeringLongCCNC(HyundaiCanfdCCNCTest, TestHyundaiCanfd
 
   CCNC_SAFETY_PARAM = HyundaiSafetyFlags.CCNC | HyundaiSafetyFlags.LONG
 
-  TX_MSGS = [[0x12A, 0], [0x1E0, 0], [0x1CF, 2], [0x7C4, 2], [0x1A0, 0], [0xCB, 0]]
-  RELAY_MALFUNCTION_ADDRS = {0: (0x12A, 0x1E0, 0x161, 0x162, 0x1A0, 0xCB), 2: (0x7C4, 0xEA)}
-  FWD_BLACKLISTED_ADDRS = {2: [0x12A, 0x1E0, 0x161, 0x162, 0x1A0, 0xCB], 0: [0x7C4, 0xEA]}
+  TX_MSGS = [[0x12A, 0], [0x1E0, 0], [0x1CF, 2], [0x7C4, 2], [0x1A0, 0]]
+  RELAY_MALFUNCTION_ADDRS = {0: (0x12A, 0x1E0, 0x161, 0x162, 0x1A0), 2: (0x7C4, 0xEA)}
+  FWD_BLACKLISTED_ADDRS = {2: [0x12A, 0x1E0, 0x161, 0x162, 0x1A0], 0: [0x7C4, 0xEA]}
 
 
 if __name__ == "__main__":

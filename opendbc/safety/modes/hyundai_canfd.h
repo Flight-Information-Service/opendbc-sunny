@@ -19,7 +19,7 @@
 #define HYUNDAI_CANFD_LFA_STEERING_COMMON_TX_MSGS(e_can)  \
   {0x12A, e_can, 16, .check_relay = (e_can) == 0},  /* LFA */            \
   {0x1E0, e_can, 16, .check_relay = (e_can) == 0},  /* LFAHDA_CLUSTER */ \
-  {0xCB,  e_can, 24, .check_relay = (e_can) == 0},  /* LFA_ALT */        \
+  {0xCB,  e_can, 24, .check_relay = false},         /* LFA_ALT, TX gated on HYUNDAI_PARAM_CANFD_LFA_ALT_STEERING; stock msg blocked in fwd hook */ \
 
 #define HYUNDAI_CANFD_SCC_CONTROL_COMMON_TX_MSGS(e_can, longitudinal) \
   {0x1A0, e_can, 32, .check_relay = (longitudinal)},  /* SCC_CONTROL */ \
@@ -49,6 +49,7 @@
 static bool hyundai_canfd_alt_buttons = false;
 static bool hyundai_canfd_angle_steering = false;
 static bool hyundai_canfd_lka_steer_msg_alt = false;
+static bool hyundai_canfd_lfa_alt_steering = false;
 
 static unsigned int hyundai_canfd_get_lka_addr(void) {
   return hyundai_canfd_lka_steer_msg_alt ? 0x110U : 0x50U;
@@ -208,16 +209,28 @@ static bool hyundai_canfd_tx_hook(const CANPacket_t *msg) {
 
   bool tx = true;
 
-  // LFA_ALT steering (HDA1 + LFA2 angle steering cars)
-  if ((msg->addr == 0xCBU) && hyundai_canfd_angle_steering) {
-    const int lfa_angle_active = (msg->data[3] >> 4U);
-    const bool steer_angle_req = lfa_angle_active == 2;
-
-    int desired_angle = (((uint32_t)(msg->data[5] & 0x3FU)) << 8) | (uint32_t)msg->data[4];
-    desired_angle = to_signed(desired_angle, 14);
-
-    if (steer_angle_cmd_checks_vm(desired_angle, steer_angle_req, HYUNDAI_CANFD_ANGLE_STEERING_LIMITS, HYUNDAI_STEERING_PARAMS)) {
+  // LFA_ALT steering (HDA1 + LFA2 angle steering cars). Only allowed on platforms that
+  // explicitly opt in via HYUNDAI_PARAM_CANFD_LFA_ALT_STEERING.
+  if (msg->addr == 0xCBU) {
+    if (!(hyundai_canfd_lfa_alt_steering && hyundai_canfd_angle_steering)) {
       tx = false;
+    } else {
+      const int lfa_angle_active = (msg->data[3] >> 4U);
+      const bool steer_angle_req = lfa_angle_active == 2;
+
+      int desired_angle = (((uint32_t)(msg->data[5] & 0x3FU)) << 8) | (uint32_t)msg->data[4];
+      desired_angle = to_signed(desired_angle, 14);
+
+      // ADAS_ACIAnglTqRedcGainVal: bits 48-55, unsigned. Raw 0-250 valid, 251-255 reserved.
+      const uint8_t gain_raw = msg->data[6];
+      bool gain_violation = gain_raw > 250U;
+      if (!steer_angle_req && (gain_raw != 0U)) {
+        gain_violation = true;
+      }
+
+      if (steer_angle_cmd_checks_vm(desired_angle, steer_angle_req, HYUNDAI_CANFD_ANGLE_STEERING_LIMITS, HYUNDAI_STEERING_PARAMS) || gain_violation) {
+        tx = false;
+      }
     }
   }
 
@@ -309,6 +322,7 @@ static safety_config hyundai_canfd_init(uint16_t param) {
   const uint16_t HYUNDAI_PARAM_CANFD_ALT_BUTTONS = 32;
   const uint16_t HYUNDAI_PARAM_CANFD_ANGLE_STEERING = 1024;
   const uint16_t HYUNDAI_PARAM_CCNC = 2048;
+  const uint16_t HYUNDAI_PARAM_CANFD_LFA_ALT_STEERING = 4096;
 
   static const CanMsg HYUNDAI_CANFD_LKA_STEER_MSG_TX_MSGS[] = {
     HYUNDAI_CANFD_LKA_STEER_MSG_COMMON_TX_MSGS(0, 1)
@@ -367,6 +381,7 @@ static safety_config hyundai_canfd_init(uint16_t param) {
   gen_crc_lookup_table_16(0x1021, hyundai_canfd_crc_lut);
   hyundai_canfd_alt_buttons = GET_FLAG(param, HYUNDAI_PARAM_CANFD_ALT_BUTTONS);
   hyundai_canfd_angle_steering = GET_FLAG(param, HYUNDAI_PARAM_CANFD_ANGLE_STEERING);
+  hyundai_canfd_lfa_alt_steering = GET_FLAG(param, HYUNDAI_PARAM_CANFD_LFA_ALT_STEERING);
   // TODO: test this restriction
   hyundai_canfd_lka_steer_msg_alt = GET_FLAG(param, HYUNDAI_PARAM_CANFD_LKA_STEER_MSG_ALT);
   const bool hyundai_ccnc = GET_FLAG(param, HYUNDAI_PARAM_CCNC);
@@ -491,10 +506,22 @@ static safety_config hyundai_canfd_init(uint16_t param) {
   return ret;
 }
 
+static bool hyundai_canfd_fwd_hook(int bus_num, int addr) {
+  bool block_msg = false;
+
+  // Block the stock LFA_ALT message from the camera on cars we steer through LFA_ALT
+  if ((bus_num == 2) && (addr == 0xCB)) {
+    block_msg = hyundai_canfd_lfa_alt_steering;
+  }
+
+  return block_msg;
+}
+
 const safety_hooks hyundai_canfd_hooks = {
   .init = hyundai_canfd_init,
   .rx = hyundai_canfd_rx_hook,
   .tx = hyundai_canfd_tx_hook,
+  .fwd = hyundai_canfd_fwd_hook,
   .get_counter = hyundai_canfd_get_counter,
   .get_checksum = hyundai_canfd_get_checksum,
   .compute_checksum = hyundai_common_canfd_compute_checksum,

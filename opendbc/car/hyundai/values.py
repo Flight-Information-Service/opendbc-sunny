@@ -90,6 +90,7 @@ class HyundaiSafetyFlags(IntFlag):
   ALT_LIMITS_2 = 512
   CANFD_ANGLE_STEERING = 1024
   CCNC = 2048
+  CANFD_LFA_ALT_STEERING = 4096
 
 
 class ActvACISta(Enum):
