@@ -314,6 +314,9 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
     self.cruise_buttons.extend(cp.vl_all[self.cruise_btns_msg_canfd]["CRUISE_BUTTONS"])
     self.main_buttons.extend(cp.vl_all[self.cruise_btns_msg_canfd]["ADAPTIVE_CRUISE_MAIN_BTN"])
     self.lda_button = cp.vl[self.cruise_btns_msg_canfd]["LDA_BTN"]
+    if self.CP.carFingerprint == CAR.KIA_EV3:
+      # EV3 does not carry the LFA button in CRUISE_BUTTONS_ALT; it lives in 0x10B
+      self.lda_button = cp.vl["STEERING_BUTTONS_ALT"]["LFA_BTN"]
     self.buttons_counter = cp.vl[self.cruise_btns_msg_canfd]["COUNTER"]
     ret.accFaulted = cp.vl["TCS"]["ACCEnable"] != 0  # 0 ACC CONTROL ENABLED, 1-3 ACC CONTROL DISABLED
 
@@ -322,6 +325,10 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
                                           else cp_cam.vl["CAM_0x2a4"])
 
     MadsCarState.update_mads_canfd(self, ret, can_parsers)
+
+    if self.CP.carFingerprint == CAR.KIA_EV3:
+      # EV3 does not report cruise main state in SCC_CONTROL (MainMode_ACC stays 0); it lives in 0x145
+      ret.cruiseState.available = cp.vl["CRUISE_STATE_ALT"]["MAIN_CRUISE"] == 1
 
     ret.buttonEvents = [*create_button_events(self.cruise_buttons[-1], prev_cruise_buttons, BUTTONS_DICT),
                         *create_button_events(self.main_buttons[-1], prev_main_buttons, {1: ButtonType.mainCruise}),

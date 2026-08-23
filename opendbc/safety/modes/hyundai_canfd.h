@@ -50,6 +50,8 @@ static bool hyundai_canfd_alt_buttons = false;
 static bool hyundai_canfd_angle_steering = false;
 static bool hyundai_canfd_lka_steer_msg_alt = false;
 static bool hyundai_canfd_lfa_alt_steering = false;
+// KIA_EV3-generation platforms: CCNC + angle steering + alt buttons
+static bool hyundai_canfd_ev3_gen = false;
 
 static unsigned int hyundai_canfd_get_lka_addr(void) {
   return hyundai_canfd_lka_steer_msg_alt ? 0x110U : 0x50U;
@@ -99,7 +101,10 @@ static void hyundai_canfd_rx_hook(const CANPacket_t *msg) {
       } else {
         cruise_button = (msg->data[4] >> 4) & 0x7U;
         main_button = GET_BIT(msg, 34U);
-        mads_button_press = GET_BIT(msg, 39U) ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
+        if (!hyundai_canfd_ev3_gen) {
+          // EV3-generation cars carry the LFA button in 0x10B instead
+          mads_button_press = GET_BIT(msg, 39U) ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
+        }
       }
       hyundai_common_cruise_buttons_check(cruise_button, main_button);
     }
@@ -140,7 +145,19 @@ static void hyundai_canfd_rx_hook(const CANPacket_t *msg) {
       int cruise_status = ((msg->data[8] >> 4) & 0x7U);
       bool cruise_engaged = (cruise_status == 1) || (cruise_status == 2);
       hyundai_common_cruise_state_check(cruise_engaged);
-      acc_main_on = GET_BIT(msg, 66U);
+      if (!hyundai_canfd_ev3_gen) {
+        acc_main_on = GET_BIT(msg, 66U);
+      }
+    }
+  }
+
+  // KIA_EV3-generation: cruise main state and LFA button live in dedicated E-CAN messages
+  if (hyundai_canfd_ev3_gen && (msg->bus == pt_bus)) {
+    if (msg->addr == 0x145U) {
+      acc_main_on = GET_BIT(msg, 64U);
+    }
+    if (msg->addr == 0x10BU) {
+      mads_button_press = GET_BIT(msg, 87U) ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
     }
   }
 
@@ -385,6 +402,7 @@ static safety_config hyundai_canfd_init(uint16_t param) {
   // TODO: test this restriction
   hyundai_canfd_lka_steer_msg_alt = GET_FLAG(param, HYUNDAI_PARAM_CANFD_LKA_STEER_MSG_ALT);
   const bool hyundai_ccnc = GET_FLAG(param, HYUNDAI_PARAM_CCNC);
+  hyundai_canfd_ev3_gen = hyundai_ccnc && hyundai_canfd_angle_steering && hyundai_canfd_alt_buttons;
 
   safety_config ret;
   if (hyundai_longitudinal) {
