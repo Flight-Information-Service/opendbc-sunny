@@ -513,6 +513,8 @@ static safety_config hyundai_canfd_init(uint16_t param) {
         {.msg = {{0xa0, 0, 24, 100U, .max_counter = 0xffU, .ignore_quality_flag = true}, { 0 }, { 0 }}},
         {.msg = {{0xea, 0, 24, 100U, .max_counter = 0xffU, .ignore_quality_flag = true}, { 0 }, { 0 }}},
         {.msg = {{0x1aa, 0, 16, 50U, .ignore_checksum = true, .max_counter = 0xffU, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+        // STEERING_BUTTONS_ALT: carries the LFA button; must be whitelisted so the rx hook sees it
+        {.msg = {{0x10B, 0, 16, 25U, .ignore_checksum = true, .max_counter = 0U, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
         HYUNDAI_CANFD_SCC_ADDR_CHECK(2)
       };
 
