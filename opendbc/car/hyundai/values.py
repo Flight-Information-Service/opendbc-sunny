@@ -735,7 +735,9 @@ class CAR(Platforms):
     ],
     # TODO: steerRatio is a placeholder, needs validation on a real car
     CarSpecs(mass=1885, wheelbase=2.68, steerRatio=14.0),
-    flags=HyundaiFlags.EV | HyundaiFlags.CANFD_ANGLE_STEERING | HyundaiFlags.CCNC,
+    # EPS only accepts angle control via LFA_ALT (0xCB): with LFA (0x12A) commands the MDPS
+    # ACI Lv2 status stays 1 (standby) and never activates
+    flags=HyundaiFlags.EV | HyundaiFlags.CANFD_ANGLE_STEERING | HyundaiFlags.CCNC | HyundaiFlags.CANFD_LFA_ALT_STEERING,
   )
   KIA_EV9 = HyundaiCanFDPlatformConfig(
     [
