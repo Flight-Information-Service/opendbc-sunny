@@ -481,6 +481,19 @@ static safety_config hyundai_canfd_init(uint16_t param) {
         HYUNDAI_CANFD_SCC_ADDR_CHECK(2)
       };
 
+      // KIA_EV3-generation platforms (CCNC + angle steering + alt buttons) transmit the EV
+      // accelerator message (0x35) at 50Hz with a counter scheme the standard +1 check rejects
+      static RxCheck hyundai_canfd_ev3_gen_rx_checks[] = {
+        {.msg = {{0x35, 0, 32, 50U, .max_counter = 0U, .ignore_quality_flag = true},
+                 {0x100, 0, 32, 100U, .max_counter = 0xffU, .ignore_quality_flag = true},
+                 {0x105, 0, 32, 100U, .max_counter = 0xffU, .ignore_quality_flag = true}}},
+        {.msg = {{0x175, 0, 24, 50U, .max_counter = 0xffU, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+        {.msg = {{0xa0, 0, 24, 100U, .max_counter = 0xffU, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+        {.msg = {{0xea, 0, 24, 100U, .max_counter = 0xffU, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+        {.msg = {{0x1aa, 0, 16, 50U, .ignore_checksum = true, .max_counter = 0xffU, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+        HYUNDAI_CANFD_SCC_ADDR_CHECK(2)
+      };
+
       static CanMsg hyundai_canfd_lfa_steering_camera_scc_tx_msgs[] = {
         HYUNDAI_CANFD_LFA_STEERING_CAMERA_SCC_TX_MSGS(false)
       };
@@ -495,7 +508,9 @@ static safety_config hyundai_canfd_init(uint16_t param) {
         SET_TX_MSGS(hyundai_canfd_lfa_steering_camera_scc_tx_msgs, ret);
       }
 
-      if (hyundai_canfd_alt_buttons) {
+      if (hyundai_ccnc && hyundai_canfd_angle_steering && hyundai_canfd_alt_buttons) {
+        SET_RX_CHECKS(hyundai_canfd_ev3_gen_rx_checks, ret);
+      } else if (hyundai_canfd_alt_buttons) {
         SET_RX_CHECKS(hyundai_canfd_alt_buttons_rx_checks, ret);
       } else {
         SET_RX_CHECKS(hyundai_canfd_rx_checks, ret);

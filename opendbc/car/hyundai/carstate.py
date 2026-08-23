@@ -237,8 +237,10 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
 
     ret.brakePressed = cp.vl["TCS"]["DriverBraking"] == 1
 
-    ret.doorOpen = cp.vl["DOORS_SEATBELTS"]["DRIVER_DOOR"] == 1
-    ret.seatbeltUnlatched = cp.vl["DOORS_SEATBELTS"]["DRIVER_SEATBELT"] == 0
+    # KIA_EV3 does not transmit DOORS_SEATBELTS (0x411)
+    if self.CP.carFingerprint != CAR.KIA_EV3:
+      ret.doorOpen = cp.vl["DOORS_SEATBELTS"]["DRIVER_DOOR"] == 1
+      ret.seatbeltUnlatched = cp.vl["DOORS_SEATBELTS"]["DRIVER_SEATBELT"] == 0
 
     gear = cp.vl[self.gear_msg_canfd]["GEAR"]
     ret.gearShifter = self.parse_gear_shifter(self.shifter_values.get(gear))
@@ -260,7 +262,9 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
     ret.steerFaultTemporary = cp.vl["MDPS"]["MDPS_LkaFailSta"] != 0
     if self.is_canfd_angle_steering:
       ret.steerFaultTemporary = ret.steerFaultTemporary or cp.vl["MDPS"]["MDPS_ADAS_AciFltSig_Lv2"] != 0
-      self.hands_on_steering_grip = cp.vl["HOD_FD_01_100ms"]["HOD_Dir_Status"]
+      # KIA_EV3 does not transmit HOD_FD_01_100ms (0x2af)
+      if self.CP.carFingerprint != CAR.KIA_EV3:
+        self.hands_on_steering_grip = cp.vl["HOD_FD_01_100ms"]["HOD_Dir_Status"]
       torque_overriding = abs(ret.steeringTorque) > self.params.STEER_THRESHOLD
       ret.steeringPressed = self.update_steering_pressed(torque_overriding, 5)
       self.imu_lateral_acceleration = cp.vl["IMU_01_10ms"]["IMU_LatAccelVal"] * 9.81  # m/s^2
@@ -271,13 +275,14 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
     left_blinker_sig, right_blinker_sig = "LEFT_LAMP", "RIGHT_LAMP"
     if self.CP.carFingerprint == CAR.HYUNDAI_KONA_EV_2ND_GEN or self.is_canfd_angle_steering or self.CP.flags & HyundaiFlags.CCNC:
       left_blinker_sig, right_blinker_sig = "LEFT_LAMP_ALT", "RIGHT_LAMP_ALT"
-    if self.CP.flags & HyundaiFlags.CCNC and (self.is_canfd_angle_steering or not self.CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG):
-      # angle steering cars carry the CCNC messages on E-CAN, LFA steering cars on the camera bus
-      cp_ccnc = cp if self.is_canfd_angle_steering else cp_cam
-      self.msg_161, self.msg_162, self.msg_1b5 = map(copy.copy, (cp_ccnc.vl["CCNC_0x161"], cp_ccnc.vl["CCNC_0x162"], cp_ccnc.vl["FR_CMR_03_50ms"]))
+    if self.CP.flags & HyundaiFlags.CCNC and not self.CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG:
+      # CCNC messages come from the camera on the camera bus (verified on KIA_EV3 as well)
+      self.msg_161, self.msg_162, self.msg_1b5 = map(copy.copy, (cp_cam.vl["CCNC_0x161"], cp_cam.vl["CCNC_0x162"], cp_cam.vl["FR_CMR_03_50ms"]))
       self.cruise_info = copy.copy((cp_cam if self.CP.flags & HyundaiFlags.CANFD_CAMERA_SCC else cp).vl["SCC_CONTROL"])
-    ret.leftBlinker, ret.rightBlinker = self.update_blinker_from_lamp(50, cp.vl["BLINKERS"][left_blinker_sig],
-                                                                      cp.vl["BLINKERS"][right_blinker_sig])
+    # KIA_EV3 does not transmit BLINKERS (0x413); TODO: find the EV3 turn signal source message
+    if self.CP.carFingerprint != CAR.KIA_EV3:
+      ret.leftBlinker, ret.rightBlinker = self.update_blinker_from_lamp(50, cp.vl["BLINKERS"][left_blinker_sig],
+                                                                        cp.vl["BLINKERS"][right_blinker_sig])
     if self.CP.enableBsm:
       ret.leftBlindspot = bool(cp.vl["ADAS_CMD_50_50ms"]["BCW_LtIndSta"])
       ret.rightBlindspot = bool(cp.vl["ADAS_CMD_50_50ms"]["BCW_RtIndSta"])
@@ -339,10 +344,20 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
         # this message is 50Hz but the ECU frequently stops transmitting for ~0.5s
         ("CRUISE_BUTTONS", 1)
       ]
-    return {
+    parsers = {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], msgs, CanBus(CP).ECAN),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).CAM),
     }
+
+    if CP.carFingerprint == CAR.KIA_EV3:
+      # EV3 transmits these with a counter scheme the standard +1 check rejects
+      # (same quirk as the Palisade LX3 generation); data and checksums are fine
+      for name in ("ACCELERATOR", "MANUAL_SPEED_LIMIT_ASSIST"):
+        parsers[Bus.pt].vl[name]  # register the message with the parser
+        addr = parsers[Bus.pt].dbc.name_to_msg[name].address
+        parsers[Bus.pt].message_states[addr].ignore_counter = True
+
+    return parsers
 
   def get_can_parsers(self, CP, CP_SP):
     if CP.flags & HyundaiFlags.CANFD:
