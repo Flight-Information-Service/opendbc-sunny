@@ -280,8 +280,11 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
       # CCNC messages come from the camera on the camera bus (verified on KIA_EV3 as well)
       self.msg_161, self.msg_162, self.msg_1b5 = map(copy.copy, (cp_cam.vl["CCNC_0x161"], cp_cam.vl["CCNC_0x162"], cp_cam.vl["FR_CMR_03_50ms"]))
       self.cruise_info = copy.copy((cp_cam if self.CP.flags & HyundaiFlags.CANFD_CAMERA_SCC else cp).vl["SCC_CONTROL"])
-    # KIA_EV3 does not transmit BLINKERS (0x413); TODO: find the EV3 turn signal source message
-    if self.CP.carFingerprint != CAR.KIA_EV3:
+    if self.CP.carFingerprint == CAR.KIA_EV3:
+      # EV3 does not transmit BLINKERS (0x413); the turn signal switch state lives in 0x3E3
+      ret.leftBlinker, ret.rightBlinker = self.update_blinker_from_lamp(50, cp.vl["BLINKERS_ALT"]["LEFT_TURN_SW"],
+                                                                        cp.vl["BLINKERS_ALT"]["RIGHT_TURN_SW"])
+    else:
       ret.leftBlinker, ret.rightBlinker = self.update_blinker_from_lamp(50, cp.vl["BLINKERS"][left_blinker_sig],
                                                                         cp.vl["BLINKERS"][right_blinker_sig])
     if self.CP.enableBsm:
