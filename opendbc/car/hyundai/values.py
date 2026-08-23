@@ -733,8 +733,8 @@ class CAR(Platforms):
     [
       HyundaiCarDocs("Kia EV3 (with LFA2) 2024-26", "Lane Follow Assist 2", car_parts=CarParts.common([CarHarness.hyundai_a]))
     ],
-    # TODO: steerRatio is a placeholder, needs validation on a real car
-    CarSpecs(mass=1885, wheelbase=2.68, steerRatio=14.0),
+    # steerRatio from paramsd convergence on a real car (vehicleParameters 15.87)
+    CarSpecs(mass=1885, wheelbase=2.68, steerRatio=15.87),
     # EPS only accepts angle control via LFA_ALT (0xCB): with LFA (0x12A) commands the MDPS
     # ACI Lv2 status stays 1 (standby) and never activates
     flags=HyundaiFlags.EV | HyundaiFlags.CANFD_ANGLE_STEERING | HyundaiFlags.CCNC | HyundaiFlags.CANFD_LFA_ALT_STEERING,
