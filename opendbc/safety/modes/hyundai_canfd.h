@@ -484,7 +484,7 @@ static safety_config hyundai_canfd_init(uint16_t param) {
       // KIA_EV3-generation platforms (CCNC + angle steering + alt buttons) transmit the EV
       // accelerator message (0x35) at 50Hz with a counter scheme the standard +1 check rejects
       static RxCheck hyundai_canfd_ev3_gen_rx_checks[] = {
-        {.msg = {{0x35, 0, 32, 50U, .max_counter = 0U, .ignore_quality_flag = true},
+        {.msg = {{0x35, 0, 32, 50U, .max_counter = 0U, .ignore_counter = true, .ignore_quality_flag = true},
                  {0x100, 0, 32, 100U, .max_counter = 0xffU, .ignore_quality_flag = true},
                  {0x105, 0, 32, 100U, .max_counter = 0xffU, .ignore_quality_flag = true}}},
         {.msg = {{0x175, 0, 24, 50U, .max_counter = 0xffU, .ignore_quality_flag = true}, { 0 }, { 0 }}},
