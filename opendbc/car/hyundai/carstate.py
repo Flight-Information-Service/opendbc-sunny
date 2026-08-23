@@ -37,6 +37,7 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
     self.cruise_buttons: deque = deque([Buttons.NONE] * PREV_BUTTON_SAMPLES, maxlen=PREV_BUTTON_SAMPLES)
     self.main_buttons: deque = deque([Buttons.NONE] * PREV_BUTTON_SAMPLES, maxlen=PREV_BUTTON_SAMPLES)
     self.lda_button = 0
+    self.ev3_main_cruise_enabled = False
 
     self.gear_msg_canfd = "ACCELERATOR" if CP.flags & HyundaiFlags.EV else \
                           "GEAR_ALT" if CP.flags & HyundaiFlags.CANFD_ALT_GEARS else \
@@ -326,13 +327,18 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
 
     MadsCarState.update_mads_canfd(self, ret, can_parsers)
 
-    if self.CP.carFingerprint == CAR.KIA_EV3:
-      # EV3 does not report cruise main state in SCC_CONTROL (MainMode_ACC stays 0); it lives in 0x145
-      ret.cruiseState.available = cp.vl["CRUISE_STATE_ALT"]["MAIN_CRUISE"] == 1
-
     ret.buttonEvents = [*create_button_events(self.cruise_buttons[-1], prev_cruise_buttons, BUTTONS_DICT),
                         *create_button_events(self.main_buttons[-1], prev_main_buttons, {1: ButtonType.mainCruise}),
                         *create_button_events(self.lda_button, prev_lda_button, {1: ButtonType.lkas})]
+
+    if self.CP.carFingerprint == CAR.KIA_EV3:
+      # EV3 does not report cruise main state on the bus (SCC_CONTROL MainMode_ACC stays 0),
+      # so track it from main button presses; stock SCC engaging implies main is on
+      if any(be.type == ButtonType.mainCruise and be.pressed for be in ret.buttonEvents):
+        self.ev3_main_cruise_enabled = not self.ev3_main_cruise_enabled
+      if ret.cruiseState.enabled:
+        self.ev3_main_cruise_enabled = True
+      ret.cruiseState.available = self.ev3_main_cruise_enabled
 
     if self.CP.openpilotLongitudinalControl:
       ret.cruiseState.available = self.get_main_cruise(ret)

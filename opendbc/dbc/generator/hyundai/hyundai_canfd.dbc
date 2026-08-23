@@ -757,11 +757,7 @@ BO_ 1264 LOCAL_TIME: 8 XXX
 BO_ 267 STEERING_BUTTONS_ALT: 16 XXX
  SG_ LFA_BTN : 87|1@1+ (1,0) [0|1] "" XXX
 
-BO_ 325 CRUISE_STATE_ALT: 32 XXX
- SG_ MAIN_CRUISE : 64|1@1+ (1,0) [0|1] "" XXX
-
 CM_ BO_ 267 "KIA_EV3-generation steering wheel button state (LFA button at byte 10 bit 7)";
-CM_ BO_ 325 "KIA_EV3-generation cruise state (main cruise on/off at byte 8 bit 0)";
 CM_ BO_ 74 "[P] Periodic";
 CM_ SG_ 74 IMU_Crc1Val "The data area for CRC calculation is based on the data length (DLC) of the message DB.The CRC shall be calculated over the entire data block (excluding the CRC bytes) including the user data, alive counter and Data ID- CRC Polynomial (0x1021) , Ini";
 CM_ SG_ 74 IMU_AlvCnt1Val "For the first transmission request for a data element the counter shall be initialized with 0 and shall be incremented by 1 for every subsequent send request. When the counter reaches the maximum value(0xFF), then it shall restart with 0 for the next s";
