@@ -368,10 +368,16 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
     if CP.carFingerprint == CAR.KIA_EV3:
       # EV3 transmits these with a counter scheme the standard +1 check rejects
       # (same quirk as the Palisade LX3 generation); data and checksums are fine
-      for name in ("ACCELERATOR", "MANUAL_SPEED_LIMIT_ASSIST"):
-        parsers[Bus.pt].vl[name]  # register the message with the parser
-        addr = parsers[Bus.pt].dbc.name_to_msg[name].address
-        parsers[Bus.pt].message_states[addr].ignore_counter = True
+      ev3_loose_counters = {
+        Bus.pt: ("ACCELERATOR", "MANUAL_SPEED_LIMIT_ASSIST"),
+        # the camera CCNC stream intermittently skips counters, tripping canError mid-drive
+        Bus.cam: ("CCNC_0x161", "CCNC_0x162", "FR_CMR_03_50ms"),
+      }
+      for bus, names in ev3_loose_counters.items():
+        for name in names:
+          parsers[bus].vl[name]  # register the message with the parser
+          addr = parsers[bus].dbc.name_to_msg[name].address
+          parsers[bus].message_states[addr].ignore_counter = True
 
     return parsers
 
