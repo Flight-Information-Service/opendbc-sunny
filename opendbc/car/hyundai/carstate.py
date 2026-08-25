@@ -65,6 +65,7 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
     self.buttons_counter = 0
 
     self.cruise_info = {}
+    self.cruise_info_seen = False
     self.msg_161, self.msg_162, self.msg_1b5 = {}, {}, {}
 
     # On some cars, CLU15->CF_Clu_VehicleSpeed can oscillate faster than the dash updates. Sample at 5 Hz
@@ -279,7 +280,13 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
     if self.CP.flags & HyundaiFlags.CCNC and not self.CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG:
       # CCNC messages come from the camera on the camera bus (verified on KIA_EV3 as well)
       self.msg_161, self.msg_162, self.msg_1b5 = map(copy.copy, (cp_cam.vl["CCNC_0x161"], cp_cam.vl["CCNC_0x162"], cp_cam.vl["FR_CMR_03_50ms"]))
-      self.cruise_info = copy.copy((cp_cam if self.CP.flags & HyundaiFlags.CANFD_CAMERA_SCC else cp).vl["SCC_CONTROL"])
+      cp_scc = cp_cam if self.CP.flags & HyundaiFlags.CANFD_CAMERA_SCC else cp
+      scc_info = cp_scc.vl["SCC_CONTROL"]
+      # the parser pre-fills unseen messages with zeros; only hand a real stock frame to the SCC_CONTROL
+      # passthrough so create_acc_control keeps its from-scratch fallback until the first frame arrives
+      if self.cruise_info_seen or cp_scc.vl_all["SCC_CONTROL"]["COUNTER"]:
+        self.cruise_info_seen = True
+        self.cruise_info = copy.copy(scc_info)
     if self.CP.carFingerprint == CAR.KIA_EV3:
       # EV3 does not transmit BLINKERS (0x413); the turn signal switch state lives in 0x3E3
       ret.leftBlinker, ret.rightBlinker = self.update_blinker_from_lamp(50, cp.vl["BLINKERS_ALT"]["LEFT_TURN_SW"],

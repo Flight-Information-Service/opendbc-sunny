@@ -120,10 +120,10 @@ static void hyundai_canfd_rx_hook(const CANPacket_t *msg) {
           mads_button_press = GET_BIT(msg, 39U) ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
         }
       }
-      if (hyundai_canfd_ev3_gen && !hyundai_longitudinal) {
+      if (hyundai_canfd_ev3_gen && !(hyundai_longitudinal && hyundai_longitudinal_main_cruise_toggleable)) {
         // EV3 has no cruise main state on the bus; toggle it on main button rising edge.
-        // With openpilot longitudinal, hyundai_common_cruise_buttons_check owns this toggle
-        // (gated on hyundai_longitudinal_main_cruise_toggleable), so skip it here to avoid a double toggle.
+        // When hyundai_common_cruise_buttons_check owns this toggle (longitudinal with
+        // hyundai_longitudinal_main_cruise_toggleable set), skip it here to avoid a double toggle.
         if (main_button && !hyundai_canfd_ev3_main_button_prev) {
           acc_main_on = !acc_main_on;
         }
@@ -455,7 +455,7 @@ static safety_config hyundai_canfd_init(uint16_t param) {
         HYUNDAI_CANFD_LFA_STEERING_CAMERA_SCC_CCNC_TX_MSGS(true)
       };
 
-      if (hyundai_canfd_ev3_gen) {
+      if (hyundai_camera_scc && hyundai_canfd_ev3_gen) {
         SET_RX_CHECKS(hyundai_canfd_ev3_gen_long_rx_checks, ret);
       } else if (hyundai_canfd_alt_buttons) {
         SET_RX_CHECKS(hyundai_canfd_alt_buttons_long_rx_checks, ret);

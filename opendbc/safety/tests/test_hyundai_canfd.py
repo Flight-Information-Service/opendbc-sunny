@@ -11,6 +11,7 @@ from opendbc.safety.tests.libsafety import libsafety_py
 import opendbc.safety.tests.common as common
 from opendbc.safety.tests.common import CANPackerSafety, away_round, round_speed
 from opendbc.safety.tests.hyundai_common import HyundaiButtonBase, HyundaiLongitudinalBase
+from opendbc.sunnypilot.car.hyundai.values import HyundaiSafetyFlagsSP
 from opendbc.car.lateral import get_max_angle_delta_vm, get_max_angle_vm, AngleSteeringLimitsVM
 from opendbc.car.hyundai.interface import CarInterface
 
@@ -754,6 +755,121 @@ class TestHyundaiCanfdLFASteeringLongCCNC(HyundaiCanfdCCNCTest, TestHyundaiCanfd
   TX_MSGS = [[0x12A, 0], [0x1E0, 0], [0x1CF, 2], [0x7C4, 2], [0x1A0, 0]]
   RELAY_MALFUNCTION_ADDRS = {0: (0x12A, 0x1E0, 0x161, 0x162, 0x1A0), 2: (0x7C4, 0xEA)}
   FWD_BLACKLISTED_ADDRS = {2: [0x12A, 0x1E0, 0x161, 0x162, 0x1A0], 0: [0x7C4, 0xEA]}
+
+
+class TestHyundaiCanfdEV3Gen(unittest.TestCase):
+  """KIA_EV3-generation safety branches: CCNC + angle steering + alt buttons + camera SCC + EV gas.
+
+  The parameterized CCNC classes are skipped, so the EV3-specific branches (main-cruise toggle
+  ownership, the longitudinal RX check variant, SCC_CONTROL semantics per mode) are covered here
+  directly against libsafety.
+  """
+
+  EV3_PARAM = int(HyundaiSafetyFlags.EV_GAS | HyundaiSafetyFlags.CAMERA_SCC | HyundaiSafetyFlags.CANFD_ALT_BUTTONS |
+                  HyundaiSafetyFlags.CANFD_ANGLE_STEERING | HyundaiSafetyFlags.CCNC | HyundaiSafetyFlags.CANFD_LFA_ALT_STEERING)
+
+  def setUp(self):
+    self.packer = CANPackerSafety("hyundai_canfd_generated")
+    self.safety = libsafety_py.libsafety
+
+  def _init(self, long, main_cruise_toggleable=True):
+    self.safety.set_current_safety_param_sp(int(HyundaiSafetyFlagsSP.LONG_MAIN_CRUISE_TOGGLEABLE) if main_cruise_toggleable else 0)
+    param = self.EV3_PARAM | int(HyundaiSafetyFlags.LONG) if long else self.EV3_PARAM
+    self.safety.set_safety_hooks(CarParams.SafetyModel.hyundaiCanfd, param)
+    self.safety.init_tests()
+
+  def _rx(self, name, values, bus=0):
+    return self.safety.safety_rx_hook(self.packer.make_can_msg_safety(name, bus, values))
+
+  def _tx(self, name, values, bus=0):
+    return self.safety.safety_tx_hook(self.packer.make_can_msg_safety(name, bus, values))
+
+  def _press_main(self):
+    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 0, "ADAPTIVE_CRUISE_MAIN_BTN": 1}))
+    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 0, "ADAPTIVE_CRUISE_MAIN_BTN": 0}))
+
+  def test_main_toggle_single_edge(self):
+    # exactly one toggle per rising edge, in every mode/param combination
+    for long in (False, True):
+      for toggleable in (False, True):
+        with self.subTest(long=long, main_cruise_toggleable=toggleable):
+          self._init(long, toggleable)
+          self.assertFalse(self.safety.get_acc_main_on())
+          self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 0, "ADAPTIVE_CRUISE_MAIN_BTN": 1}))
+          self.assertTrue(self.safety.get_acc_main_on())
+          # held button must not re-toggle
+          self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 0, "ADAPTIVE_CRUISE_MAIN_BTN": 1}))
+          self.assertTrue(self.safety.get_acc_main_on())
+          self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 0, "ADAPTIVE_CRUISE_MAIN_BTN": 0}))
+          self._press_main()
+          self.assertFalse(self.safety.get_acc_main_on())
+
+  def test_long_button_engage(self):
+    self._init(long=True)
+    self.assertFalse(self.safety.get_controls_allowed())
+    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 2, "ADAPTIVE_CRUISE_MAIN_BTN": 0}))  # SET
+    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 0, "ADAPTIVE_CRUISE_MAIN_BTN": 0}))  # falling edge
+    self.assertTrue(self.safety.get_controls_allowed())
+    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 4, "ADAPTIVE_CRUISE_MAIN_BTN": 0}))  # CANCEL
+    self.assertFalse(self.safety.get_controls_allowed())
+
+  def test_long_accel_limits(self):
+    self._init(long=True)
+    self.safety.set_controls_allowed(True)
+    self.assertTrue(self._tx("SCC_CONTROL", {"ACCMode": 1, "aReqRaw": 2.0, "aReqValue": 2.0}))
+    self.assertTrue(self._tx("SCC_CONTROL", {"ACCMode": 1, "aReqRaw": -3.5, "aReqValue": -3.5}))
+    self.assertFalse(self._tx("SCC_CONTROL", {"ACCMode": 1, "aReqRaw": 2.1, "aReqValue": 2.1}))
+    self.assertFalse(self._tx("SCC_CONTROL", {"ACCMode": 1, "aReqRaw": -3.6, "aReqValue": -3.6}))
+    self.assertFalse(self._tx("SCC_CONTROL", {"ACCMode": 1, "aReqRaw": 0.0, "aReqValue": 2.5}))
+    self.assertFalse(self._tx("SCC_CONTROL", {"ACCMode": 1, "aReqRaw": 2.5, "aReqValue": 0.0}))
+
+  def test_long_disengaged_accel_gating(self):
+    self._init(long=True)
+    self.safety.set_controls_allowed(False)
+    self.assertFalse(self._tx("SCC_CONTROL", {"ACCMode": 1, "aReqRaw": 0.01, "aReqValue": 0.01}))
+    self.assertTrue(self._tx("SCC_CONTROL", {"ACCMode": 0, "aReqRaw": 0, "aReqValue": 0}))
+    self.assertTrue(self._tx("SCC_CONTROL", {"ACCMode": 4, "aReqRaw": 0, "aReqValue": 0}))
+
+  def test_long_gas_override_blocks_longitudinal(self):
+    self._init(long=True)
+    self.safety.set_controls_allowed(True)
+    self.assertTrue(self._rx("ACCELERATOR", {"ACCELERATOR_PEDAL": 100}))
+    self.assertTrue(self.safety.get_controls_allowed())  # lateral stays engaged
+    self.assertFalse(self.safety.get_longitudinal_allowed())
+    self.assertFalse(self._tx("SCC_CONTROL", {"ACCMode": 2, "aReqRaw": 1.0, "aReqValue": 1.0}))
+    self.assertTrue(self._tx("SCC_CONTROL", {"ACCMode": 2, "aReqRaw": 0, "aReqValue": 0}))
+    self.assertTrue(self._rx("ACCELERATOR", {"ACCELERATOR_PEDAL": 0}))
+    self.assertTrue(self.safety.get_longitudinal_allowed())
+
+  def test_long_rx_whitelist(self):
+    self._init(long=True)
+    # EV3 quirk messages must be accepted by the longitudinal RX checks
+    self.assertTrue(self._rx("ACCELERATOR", {"ACCELERATOR_PEDAL": 0}))
+    self.assertTrue(self._rx("STEERING_BUTTONS_ALT", {"LFA_BTN": 1}))
+    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 0, "ADAPTIVE_CRUISE_MAIN_BTN": 0}))
+
+  def test_long_forwarding(self):
+    self._init(long=True)
+    for addr in (0x1A0, 0x161, 0x162, 0xCB):
+      self.assertEqual(self.safety.safety_fwd_hook(2, addr), -1, f"stock 0x{addr:X} not blocked")
+    self.assertEqual(self.safety.safety_fwd_hook(2, 0x1B5), 0)
+    self.assertEqual(self.safety.safety_fwd_hook(0, 0x1AA), 2)
+
+  def test_stock_scc_semantics(self):
+    self._init(long=False)
+    # stock mode: SCC_CONTROL TX only as zero-accel cancel, camera SCC forwarded
+    self.assertTrue(self._tx("SCC_CONTROL", {"ACCMode": 4, "aReqRaw": 0, "aReqValue": 0}))
+    self.assertFalse(self._tx("SCC_CONTROL", {"ACCMode": 1, "aReqRaw": 0, "aReqValue": 0}))
+    self.assertFalse(self._tx("SCC_CONTROL", {"ACCMode": 4, "aReqRaw": 1.0, "aReqValue": 1.0}))
+    self.assertEqual(self.safety.safety_fwd_hook(2, 0x1A0), 0)
+
+  def test_reinit_clears_state(self):
+    self._init(long=True)
+    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 0, "ADAPTIVE_CRUISE_MAIN_BTN": 1}))
+    self.assertTrue(self.safety.get_acc_main_on())
+    self._init(long=False)
+    self.assertFalse(self.safety.get_acc_main_on())
+    self.assertFalse(self.safety.get_controls_allowed())
 
 
 if __name__ == "__main__":
