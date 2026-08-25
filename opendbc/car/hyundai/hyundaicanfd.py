@@ -153,10 +153,10 @@ def create_lfahda_cluster(packer, CAN, enabled, lfa_icon):
   return packer.make_can_msg("LFAHDA_CLUSTER", CAN.ECAN, values)
 
 
-# Adjacent vehicle restyle for the CCNC cluster. Icon values from the CCNC_0x162 VAL_ table: 3 = gray car, 4 = white car.
-CCNC_CAR_ICON = 3
+# Adjacent vehicle restyle for the CCNC cluster. The front slots' VAL_ table pairs a gray and white variant per
+# object class (1/2 box, 3/4 car, 5/6 truck, ...); the rear STATUS slots have no VAL_ table and are assumed to match.
 CCNC_REAR_PIN_DISTANCE = 14.0  # m, rear detections beyond this are pinned here and blink instead of moving off screen
-CCNC_REAR_BLINK_MAX_DISTANCE = 30.0  # m, blink interval scales with distance up to this
+CCNC_REAR_BLINK_MAX_DISTANCE = 25.5  # m, signal max (8 bits at 0.1 scale); blink interval scales with distance up to this
 CCNC_REAR_BLINK_MAX_INTERVAL = 100  # frames at 100Hz, so the farthest rear detections blink at ~0.5Hz
 
 
@@ -168,15 +168,19 @@ def _restyle_adjacent_vehicles(msg_162, frame):
     ("LEAD_RIGHT_REAR_STATUS", "LEAD_RIGHT_REAR_DISTANCE", True),
   )
   for status, distance, is_rear in corners:
-    if msg_162[status] == 0 or msg_162[distance] == 0:
+    icon = int(msg_162[status])
+    if icon == 0 or msg_162[distance] == 0:
       continue
 
-    icon = CCNC_CAR_ICON
+    if icon in (1, 2):  # generic box: replace with the car icon of the same shade, keep typed classes (truck, person, ...)
+      icon += 2
+
     if is_rear and msg_162[distance] > CCNC_REAR_PIN_DISTANCE:
       d = min(msg_162[distance], CCNC_REAR_BLINK_MAX_DISTANCE)
       interval = int(1 + (CCNC_REAR_BLINK_MAX_INTERVAL - 1) * d / CCNC_REAR_BLINK_MAX_DISTANCE)
+      icon -= 1 - icon % 2  # gray variant of the class pair
       if (frame // interval) % 2:
-        icon += 1
+        icon += 1  # white variant
       msg_162[distance] = CCNC_REAR_PIN_DISTANCE
     msg_162[status] = icon
 
@@ -280,17 +284,20 @@ def create_ccnc(packer, CAN, openpilot_longitudinal_control, enabled, hud, left_
     _restyle_adjacent_vehicles(msg_162, frame)
 
   if hdp_active:
-    # HDP (Highway Driving Pilot) cluster theme: cyan set speed band and icons
+    # HDP (Highway Driving Pilot) cluster theme: cyan icons while steering, plus the cyan set speed band and
+    # distance styling only while cruise is engaged so the stock SETSPEED_SPEED value on the band stays valid
     msg_161.update({
-      "SETSPEED": 6,
-      "SETSPEED_HUD": 5,
       "HDA_ICON": 5,
       "LFA_ICON": 5,
-      "CAR_CIRCLE": 2,
-      "DISTANCE": 4,
-      "DISTANCE_CAR": 3,
-      "DISTANCE_SPACING": 5,
     })
+    if enabled:
+      msg_161.update({
+        "SETSPEED": 6,
+        "SETSPEED_HUD": 5,
+        "CAR_CIRCLE": 2,
+        "DISTANCE_CAR": 3,
+        "DISTANCE_SPACING": 5,
+      })
 
   return [packer.make_can_msg(msg, CAN.ECAN, data) for msg, data in [("CCNC_0x161", msg_161), ("CCNC_0x162", msg_162)]]
 
