@@ -154,7 +154,7 @@ def create_lfahda_cluster(packer, CAN, enabled, lfa_icon):
 
 
 def create_ccnc(packer, CAN, openpilot_longitudinal_control, enabled, hud, left_blinker, right_blinker, msg_161, msg_162, msg_1b5,
-                is_metric, out, main_cruise_enabled, lfa_icon):
+                is_metric, out, main_cruise_enabled, lfa_icon, hdp_active):
   for f in {"FAULT_LSS", "FAULT_HDA", "FAULT_DAS", "FAULT_LFA", "FAULT_DAW", "FAULT_ESS"}:
     msg_162[f] = 0
   if msg_161["ALERTS_2"] == 5:
@@ -247,6 +247,19 @@ def create_ccnc(packer, CAN, openpilot_longitudinal_control, enabled, hud, left_
 
     msg_162["LEAD"] = 0 if not main_cruise_enabled else 2 if enabled else 1
     msg_162["LEAD_DISTANCE"] = msg_1b5["Longitudinal_Distance"]
+
+  if hdp_active:
+    # HDP (Highway Driving Pilot) cluster theme: cyan set speed band and icons
+    msg_161.update({
+      "SETSPEED": 6,
+      "SETSPEED_HUD": 5,
+      "HDA_ICON": 5,
+      "LFA_ICON": 5,
+      "CAR_CIRCLE": 2,
+      "DISTANCE": 4,
+      "DISTANCE_CAR": 3,
+      "DISTANCE_SPACING": 5,
+    })
 
   return [packer.make_can_msg(msg, CAN.ECAN, data) for msg, data in [("CCNC_0x161", msg_161), ("CCNC_0x162", msg_162)]]
 
