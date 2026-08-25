@@ -312,7 +312,23 @@ def create_acc_control(packer, CAN, enabled, accel_last, accel, stopping, gas_ov
     a_raw = accel  # noqa: F841
     a_val = np.clip(accel, accel_last - jn, accel_last + jn)  # noqa: F841
 
-  values = {
+  if cruise_info:
+    # New-generation (CCNC) cars reject a from-scratch SCC_CONTROL with the unknown fields zeroed; start
+    # from the stock camera frame and override only the control fields, keeping the object data stock.
+    # COUNTER is dropped so the packer generates its own monotonic counter for our 50Hz stream.
+    values = {s: v for s, v in cruise_info.items() if s != "COUNTER"}
+  else:
+    values = {
+      "ACC_ObjDist": int(lead_data.lead_distance),
+      "ACC_ObjRelSpd": lead_data.lead_rel_speed,
+      "ObjValid": int(not lead_data.lead_visible),
+      "SCC_ObjSta": 0 if not (enabled and lead_data.lead_visible) else (1 if gas_override else 2),
+      "SET_ME_2": 0x4,
+      "SET_ME_3": 0x3,
+      "SET_ME_TMP_64": 0x64,
+    }
+
+  values.update({
     "ACCMode": 0 if not enabled else (2 if gas_override else 1),
     "MainMode_ACC": 1 if main_cruise_enabled else 0,
     "StopReq": 1 if tuning.stopping else 0,
@@ -321,18 +337,8 @@ def create_acc_control(packer, CAN, enabled, accel_last, accel, stopping, gas_ov
     "VSetDis": set_speed,
     "JerkLowerLimit": tuning.jerk_lower,
     "JerkUpperLimit": tuning.jerk_upper,
-
-    "ACC_ObjDist": int(lead_data.lead_distance),
-    "ACC_ObjRelSpd": lead_data.lead_rel_speed,
-    "ObjValid": int(not lead_data.lead_visible),
-    "SCC_ObjSta": 0 if not (enabled and lead_data.lead_visible) else (1 if gas_override else 2),
-    "SET_ME_2": 0x4,
-    "SET_ME_3": 0x3,
-    "SET_ME_TMP_64": 0x64,
     "DISTANCE_SETTING": hud_control.leadDistanceBars,
-  }
-  if cruise_info:
-    values.update({s: cruise_info[s] for s in ["ACC_ObjDist", "ACC_ObjRelSpd"]})
+  })
 
   return packer.make_can_msg("SCC_CONTROL", CAN.ECAN, values)
 

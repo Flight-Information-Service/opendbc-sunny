@@ -334,9 +334,10 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
                         *create_button_events(self.main_buttons[-1], prev_main_buttons, {1: ButtonType.mainCruise}),
                         *create_button_events(self.lda_button, prev_lda_button, {1: ButtonType.lkas})]
 
-    if self.CP.carFingerprint == CAR.KIA_EV3:
+    if self.CP.carFingerprint == CAR.KIA_EV3 and not self.CP.openpilotLongitudinalControl:
       # EV3 does not report cruise main state on the bus (SCC_CONTROL MainMode_ACC stays 0),
-      # so track it from main button presses; stock SCC engaging implies main is on
+      # so track it from main button presses; stock SCC engaging implies main is on.
+      # With openpilot longitudinal, get_main_cruise below tracks the same button toggle instead.
       if any(be.type == ButtonType.mainCruise and be.pressed for be in ret.buttonEvents):
         self.ev3_main_cruise_enabled = not self.ev3_main_cruise_enabled
       if ret.cruiseState.enabled:

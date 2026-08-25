@@ -46,6 +46,19 @@
 #define HYUNDAI_CANFD_SCC_ADDR_CHECK(scc_bus)                                                                            \
   {.msg = {{0x1a0, (scc_bus), 32, 50U, .max_counter = 0xffU, .ignore_quality_flag = true}, { 0 }, { 0 }}},  \
 
+// KIA_EV3-generation platforms (CCNC + angle steering + alt buttons) transmit the EV accelerator
+// message (0x35) at 50Hz with a counter scheme the standard +1 check rejects, and carry the LFA
+// button in STEERING_BUTTONS_ALT (0x10B), which must be whitelisted so the rx hook sees it
+#define HYUNDAI_CANFD_EV3_GEN_RX_CHECKS(pt_bus)                                                                                     \
+  {.msg = {{0x35, (pt_bus), 32, 50U, .max_counter = 0U, .ignore_counter = true, .ignore_quality_flag = true},                       \
+           {0x100, (pt_bus), 32, 100U, .max_counter = 0xffU, .ignore_quality_flag = true},                                          \
+           {0x105, (pt_bus), 32, 100U, .max_counter = 0xffU, .ignore_quality_flag = true}}},                                        \
+  {.msg = {{0x175, (pt_bus), 24, 50U, .max_counter = 0xffU, .ignore_quality_flag = true}, { 0 }, { 0 }}},                           \
+  {.msg = {{0xa0, (pt_bus), 24, 100U, .max_counter = 0xffU, .ignore_quality_flag = true}, { 0 }, { 0 }}},                           \
+  {.msg = {{0xea, (pt_bus), 24, 100U, .max_counter = 0xffU, .ignore_quality_flag = true}, { 0 }, { 0 }}},                           \
+  {.msg = {{0x1aa, (pt_bus), 16, 50U, .ignore_checksum = true, .max_counter = 0xffU, .ignore_quality_flag = true}, { 0 }, { 0 }}},  \
+  {.msg = {{0x10B, (pt_bus), 16, 25U, .ignore_checksum = true, .max_counter = 0U, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}}, \
+
 static bool hyundai_canfd_alt_buttons = false;
 static bool hyundai_canfd_angle_steering = false;
 static bool hyundai_canfd_lka_steer_msg_alt = false;
@@ -107,8 +120,10 @@ static void hyundai_canfd_rx_hook(const CANPacket_t *msg) {
           mads_button_press = GET_BIT(msg, 39U) ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
         }
       }
-      if (hyundai_canfd_ev3_gen) {
-        // EV3 has no cruise main state on the bus; toggle it on main button rising edge
+      if (hyundai_canfd_ev3_gen && !hyundai_longitudinal) {
+        // EV3 has no cruise main state on the bus; toggle it on main button rising edge.
+        // With openpilot longitudinal, hyundai_common_cruise_buttons_check owns this toggle
+        // (gated on hyundai_longitudinal_main_cruise_toggleable), so skip it here to avoid a double toggle.
         if (main_button && !hyundai_canfd_ev3_main_button_prev) {
           acc_main_on = !acc_main_on;
         }
@@ -427,6 +442,11 @@ static safety_config hyundai_canfd_init(uint16_t param) {
         HYUNDAI_CANFD_ALT_BUTTONS_RX_CHECKS(0)
       };
 
+      // no SCC address check: openpilot is the SCC_CONTROL sender in longitudinal mode
+      static RxCheck hyundai_canfd_ev3_gen_long_rx_checks[] = {
+        HYUNDAI_CANFD_EV3_GEN_RX_CHECKS(0)
+      };
+
       static CanMsg hyundai_canfd_lfa_steering_camera_scc_tx_msgs[] = {
         HYUNDAI_CANFD_LFA_STEERING_CAMERA_SCC_TX_MSGS(true)
       };
@@ -435,7 +455,9 @@ static safety_config hyundai_canfd_init(uint16_t param) {
         HYUNDAI_CANFD_LFA_STEERING_CAMERA_SCC_CCNC_TX_MSGS(true)
       };
 
-      if (hyundai_canfd_alt_buttons) {
+      if (hyundai_canfd_ev3_gen) {
+        SET_RX_CHECKS(hyundai_canfd_ev3_gen_long_rx_checks, ret);
+      } else if (hyundai_canfd_alt_buttons) {
         SET_RX_CHECKS(hyundai_canfd_alt_buttons_long_rx_checks, ret);
       } else {
         SET_RX_CHECKS(hyundai_canfd_long_rx_checks, ret);
@@ -503,18 +525,8 @@ static safety_config hyundai_canfd_init(uint16_t param) {
         HYUNDAI_CANFD_SCC_ADDR_CHECK(2)
       };
 
-      // KIA_EV3-generation platforms (CCNC + angle steering + alt buttons) transmit the EV
-      // accelerator message (0x35) at 50Hz with a counter scheme the standard +1 check rejects
       static RxCheck hyundai_canfd_ev3_gen_rx_checks[] = {
-        {.msg = {{0x35, 0, 32, 50U, .max_counter = 0U, .ignore_counter = true, .ignore_quality_flag = true},
-                 {0x100, 0, 32, 100U, .max_counter = 0xffU, .ignore_quality_flag = true},
-                 {0x105, 0, 32, 100U, .max_counter = 0xffU, .ignore_quality_flag = true}}},
-        {.msg = {{0x175, 0, 24, 50U, .max_counter = 0xffU, .ignore_quality_flag = true}, { 0 }, { 0 }}},
-        {.msg = {{0xa0, 0, 24, 100U, .max_counter = 0xffU, .ignore_quality_flag = true}, { 0 }, { 0 }}},
-        {.msg = {{0xea, 0, 24, 100U, .max_counter = 0xffU, .ignore_quality_flag = true}, { 0 }, { 0 }}},
-        {.msg = {{0x1aa, 0, 16, 50U, .ignore_checksum = true, .max_counter = 0xffU, .ignore_quality_flag = true}, { 0 }, { 0 }}},
-        // STEERING_BUTTONS_ALT: carries the LFA button; must be whitelisted so the rx hook sees it
-        {.msg = {{0x10B, 0, 16, 25U, .ignore_checksum = true, .max_counter = 0U, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+        HYUNDAI_CANFD_EV3_GEN_RX_CHECKS(0)
         HYUNDAI_CANFD_SCC_ADDR_CHECK(2)
       };
 
