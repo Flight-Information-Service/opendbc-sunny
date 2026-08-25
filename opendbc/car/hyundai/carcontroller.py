@@ -124,6 +124,7 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
     self.last_button_frame = 0
     self.cancel_counter = 0
     self.hdp_display = bool(CP_SP.flags & HyundaiFlagsSP.CCNC_HDP_DISPLAY)
+    self.adjacent_vehicle_display = bool(CP_SP.flags & HyundaiFlagsSP.CCNC_ADJACENT_VEHICLE_DISPLAY)
 
   def update(self, CC, CC_SP, CS, now_nanos):
     EsccCarController.update(self, CS)
@@ -298,7 +299,7 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
       if ccnc_non_hda2:
         can_sends.extend(hyundaicanfd.create_ccnc(self.packer, self.CAN, self.CP.openpilotLongitudinalControl, CC.enabled, CC.hudControl, CC.leftBlinker,
                                                   CC.rightBlinker, CS.msg_161, CS.msg_162, CS.msg_1b5, CS.is_metric, CS.out, CS.main_cruise_enabled,
-                                                  self.lfa_icon, self.hdp_display and CC.latActive))
+                                                  self.lfa_icon, self.hdp_display and CC.latActive, self.adjacent_vehicle_display, self.frame))
       else:
         can_sends.append(hyundaicanfd.create_lfahda_cluster(self.packer, self.CAN, CC.enabled, self.lfa_icon))
 

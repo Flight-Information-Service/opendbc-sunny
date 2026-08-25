@@ -153,8 +153,36 @@ def create_lfahda_cluster(packer, CAN, enabled, lfa_icon):
   return packer.make_can_msg("LFAHDA_CLUSTER", CAN.ECAN, values)
 
 
+# Adjacent vehicle restyle for the CCNC cluster. Icon values from the CCNC_0x162 VAL_ table: 3 = gray car, 4 = white car.
+CCNC_CAR_ICON = 3
+CCNC_REAR_PIN_DISTANCE = 14.0  # m, rear detections beyond this are pinned here and blink instead of moving off screen
+CCNC_REAR_BLINK_MAX_DISTANCE = 30.0  # m, blink interval scales with distance up to this
+CCNC_REAR_BLINK_MAX_INTERVAL = 100  # frames at 100Hz, so the farthest rear detections blink at ~0.5Hz
+
+
+def _restyle_adjacent_vehicles(msg_162, frame):
+  corners = (
+    ("LEAD_LEFT", "LEAD_LEFT_DISTANCE", False),
+    ("LEAD_RIGHT", "LEAD_RIGHT_DISTANCE", False),
+    ("LEAD_LEFT_REAR_STATUS", "LEAD_LEFT_REAR_DISTANCE", True),
+    ("LEAD_RIGHT_REAR_STATUS", "LEAD_RIGHT_REAR_DISTANCE", True),
+  )
+  for status, distance, is_rear in corners:
+    if msg_162[status] == 0 or msg_162[distance] == 0:
+      continue
+
+    icon = CCNC_CAR_ICON
+    if is_rear and msg_162[distance] > CCNC_REAR_PIN_DISTANCE:
+      d = min(msg_162[distance], CCNC_REAR_BLINK_MAX_DISTANCE)
+      interval = int(1 + (CCNC_REAR_BLINK_MAX_INTERVAL - 1) * d / CCNC_REAR_BLINK_MAX_DISTANCE)
+      if (frame // interval) % 2:
+        icon += 1
+      msg_162[distance] = CCNC_REAR_PIN_DISTANCE
+    msg_162[status] = icon
+
+
 def create_ccnc(packer, CAN, openpilot_longitudinal_control, enabled, hud, left_blinker, right_blinker, msg_161, msg_162, msg_1b5,
-                is_metric, out, main_cruise_enabled, lfa_icon, hdp_active):
+                is_metric, out, main_cruise_enabled, lfa_icon, hdp_active, adjacent_vehicle_display, frame):
   for f in {"FAULT_LSS", "FAULT_HDA", "FAULT_DAS", "FAULT_LFA", "FAULT_DAW", "FAULT_ESS"}:
     msg_162[f] = 0
   if msg_161["ALERTS_2"] == 5:
@@ -247,6 +275,9 @@ def create_ccnc(packer, CAN, openpilot_longitudinal_control, enabled, hud, left_
 
     msg_162["LEAD"] = 0 if not main_cruise_enabled else 2 if enabled else 1
     msg_162["LEAD_DISTANCE"] = msg_1b5["Longitudinal_Distance"]
+
+  if adjacent_vehicle_display:
+    _restyle_adjacent_vehicles(msg_162, frame)
 
   if hdp_active:
     # HDP (Highway Driving Pilot) cluster theme: cyan set speed band and icons

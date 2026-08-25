@@ -114,6 +114,10 @@ def _initialize_hyundai_ccnc(CP: structs.CarParams, CP_SP: structs.CarParamsSP,
     if hdp_display:
       CP_SP.flags |= HyundaiFlagsSP.CCNC_HDP_DISPLAY.value
 
+    adjacent_vehicle_display = int(params_dict.get("CcncAdjacentVehicleDisplay", 0)) == 1
+    if adjacent_vehicle_display:
+      CP_SP.flags |= HyundaiFlagsSP.CCNC_ADJACENT_VEHICLE_DISPLAY.value
+
 
 def _initialize_coop_steering(CP: structs.CarParams, CP_SP: structs.CarParamsSP,
                               params_dict: dict[str, str]) -> None:

@@ -32,3 +32,4 @@ class HyundaiFlagsSP(IntFlag):
   SPEED_LIMIT_AVAILABLE = 2 ** 9  # platforms with speed limit data available
   HAS_LKAS12 = 2 ** 10
   CCNC_HDP_DISPLAY = 2 ** 11  # display HDP (Highway Driving Pilot) theme on the cluster while lateral control is active
+  CCNC_ADJACENT_VEHICLE_DISPLAY = 2 ** 12  # restyle corner radar detections on the cluster as car icons, rear ones blinking
