@@ -755,13 +755,14 @@ BO_ 1264 LOCAL_TIME: 8 XXX
  SG_ SECONDS : 31|8@0+ (1,0) [0|59] "" XXX
 
 BO_ 267 STEERING_BUTTONS_ALT: 16 XXX
+ SG_ CRUISE_BUTTONS : 83|4@0+ (1,0) [0|15] "" XXX
  SG_ LFA_BTN : 87|1@1+ (1,0) [0|1] "" XXX
 
 BO_ 995 BLINKERS_ALT: 16 XXX
  SG_ LEFT_TURN_SW : 74|1@1+ (1,0) [0|1] "" XXX
  SG_ RIGHT_TURN_SW : 76|1@1+ (1,0) [0|1] "" XXX
 
-CM_ BO_ 267 "KIA_EV3-generation steering wheel button state (LFA button at byte 10 bit 7)";
+CM_ BO_ 267 "KIA_EV3-generation steering wheel button state: low nibble of byte 10 is the button code (1=RES 2=SET 3=GAP 4=CANCEL 8=MAIN), LFA button at byte 10 bit 7; CRUISE_BUTTONS_ALT is broadcast with its button fields zeroed on these cars";
 CM_ BO_ 995 "KIA_EV3-generation turn signal switch state (left byte 9 bit 2, right byte 9 bit 4)";
 CM_ BO_ 74 "[P] Periodic";
 CM_ SG_ 74 IMU_Crc1Val "The data area for CRC calculation is based on the data length (DLC) of the message DB.The CRC shall be calculated over the entire data block (excluding the CRC bytes) including the user data, alive counter and Data ID- CRC Polynomial (0x1021) , Ini";

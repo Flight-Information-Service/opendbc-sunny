@@ -322,12 +322,18 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
     prev_cruise_buttons = self.cruise_buttons[-1]
     prev_main_buttons = self.main_buttons[-1]
     prev_lda_button = self.lda_button
-    self.cruise_buttons.extend(cp.vl_all[self.cruise_btns_msg_canfd]["CRUISE_BUTTONS"])
-    self.main_buttons.extend(cp.vl_all[self.cruise_btns_msg_canfd]["ADAPTIVE_CRUISE_MAIN_BTN"])
-    self.lda_button = cp.vl[self.cruise_btns_msg_canfd]["LDA_BTN"]
     if self.CP.carFingerprint == CAR.KIA_EV3:
-      # EV3 does not carry the LFA button in CRUISE_BUTTONS_ALT; it lives in 0x10B
+      # EV3 carries all steering wheel buttons in STEERING_BUTTONS_ALT (0x10B) and broadcasts
+      # CRUISE_BUTTONS_ALT with its button fields zeroed. The low nibble of byte 10 is a button
+      # code (1=RES, 2=SET, 3=GAP, 4=CANCEL, 8=MAIN) and bit 7 the LFA button, all verified live
+      button_codes = [int(b) for b in cp.vl_all["STEERING_BUTTONS_ALT"]["CRUISE_BUTTONS"]]
+      self.cruise_buttons.extend([b if b < 5 else Buttons.NONE for b in button_codes])
+      self.main_buttons.extend([1 if b == 8 else 0 for b in button_codes])
       self.lda_button = cp.vl["STEERING_BUTTONS_ALT"]["LFA_BTN"]
+    else:
+      self.cruise_buttons.extend(cp.vl_all[self.cruise_btns_msg_canfd]["CRUISE_BUTTONS"])
+      self.main_buttons.extend(cp.vl_all[self.cruise_btns_msg_canfd]["ADAPTIVE_CRUISE_MAIN_BTN"])
+      self.lda_button = cp.vl[self.cruise_btns_msg_canfd]["LDA_BTN"]
     self.buttons_counter = cp.vl[self.cruise_btns_msg_canfd]["COUNTER"]
     ret.accFaulted = cp.vl["TCS"]["ACCEnable"] != 0  # 0 ACC CONTROL ENABLED, 1-3 ACC CONTROL DISABLED
 
@@ -386,6 +392,9 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
           parsers[bus].vl[name]  # register the message with the parser
           addr = parsers[bus].dbc.name_to_msg[name].address
           parsers[bus].message_states[addr].ignore_counter = True
+
+      # register up front so vl_all is available on the first update
+      parsers[Bus.pt].vl["STEERING_BUTTONS_ALT"]
 
     return parsers
 

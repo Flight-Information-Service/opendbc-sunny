@@ -784,9 +784,13 @@ class TestHyundaiCanfdEV3Gen(unittest.TestCase):
   def _tx(self, name, values, bus=0):
     return self.safety.safety_tx_hook(self.packer.make_can_msg_safety(name, bus, values))
 
+  def _rx_wheel_buttons(self, code, lfa=0):
+    # EV3 steering wheel buttons: STEERING_BUTTONS_ALT (0x10B), byte 10 low nibble
+    self.assertTrue(self._rx("STEERING_BUTTONS_ALT", {"CRUISE_BUTTONS": code, "LFA_BTN": lfa}))
+
   def _press_main(self):
-    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 0, "ADAPTIVE_CRUISE_MAIN_BTN": 1}))
-    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 0, "ADAPTIVE_CRUISE_MAIN_BTN": 0}))
+    self._rx_wheel_buttons(8)
+    self._rx_wheel_buttons(0)
 
   def test_main_toggle_single_edge(self):
     # exactly one toggle per rising edge, in every mode/param combination
@@ -795,22 +799,37 @@ class TestHyundaiCanfdEV3Gen(unittest.TestCase):
         with self.subTest(long=long, main_cruise_toggleable=toggleable):
           self._init(long, toggleable)
           self.assertFalse(self.safety.get_acc_main_on())
-          self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 0, "ADAPTIVE_CRUISE_MAIN_BTN": 1}))
+          self._rx_wheel_buttons(8)
           self.assertTrue(self.safety.get_acc_main_on())
           # held button must not re-toggle
-          self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 0, "ADAPTIVE_CRUISE_MAIN_BTN": 1}))
+          self._rx_wheel_buttons(8)
           self.assertTrue(self.safety.get_acc_main_on())
-          self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 0, "ADAPTIVE_CRUISE_MAIN_BTN": 0}))
+          self._rx_wheel_buttons(0)
           self._press_main()
           self.assertFalse(self.safety.get_acc_main_on())
 
   def test_long_button_engage(self):
     self._init(long=True)
     self.assertFalse(self.safety.get_controls_allowed())
-    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 2, "ADAPTIVE_CRUISE_MAIN_BTN": 0}))  # SET
-    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 0, "ADAPTIVE_CRUISE_MAIN_BTN": 0}))  # falling edge
+    self._rx_wheel_buttons(2)  # SET
+    self._rx_wheel_buttons(0)  # falling edge
     self.assertTrue(self.safety.get_controls_allowed())
-    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 4, "ADAPTIVE_CRUISE_MAIN_BTN": 0}))  # CANCEL
+    self._rx_wheel_buttons(4)  # CANCEL
+    self.assertFalse(self.safety.get_controls_allowed())
+
+  def test_long_zeroed_alt_buttons_ignored(self):
+    # EV3 broadcasts CRUISE_BUTTONS_ALT with the button fields zeroed; even if it carried button
+    # data it must not feed engage logic or interleave zeros into the 0x10B edge detection
+    self._init(long=True)
+    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 2, "ADAPTIVE_CRUISE_MAIN_BTN": 0}))
+    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 0, "ADAPTIVE_CRUISE_MAIN_BTN": 0}))
+    self.assertFalse(self.safety.get_controls_allowed())
+    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 0, "ADAPTIVE_CRUISE_MAIN_BTN": 1}))
+    self.assertFalse(self.safety.get_acc_main_on())
+    # held SET on 0x10B with zeroed 0x1AA frames in between must not fake falling edges
+    self._rx_wheel_buttons(2)
+    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 0, "ADAPTIVE_CRUISE_MAIN_BTN": 0}))
+    self._rx_wheel_buttons(2)
     self.assertFalse(self.safety.get_controls_allowed())
 
   def test_long_accel_limits(self):
@@ -865,7 +884,7 @@ class TestHyundaiCanfdEV3Gen(unittest.TestCase):
 
   def test_reinit_clears_state(self):
     self._init(long=True)
-    self.assertTrue(self._rx("CRUISE_BUTTONS_ALT", {"CRUISE_BUTTONS": 0, "ADAPTIVE_CRUISE_MAIN_BTN": 1}))
+    self._rx_wheel_buttons(8)
     self.assertTrue(self.safety.get_acc_main_on())
     self._init(long=False)
     self.assertFalse(self.safety.get_acc_main_on())

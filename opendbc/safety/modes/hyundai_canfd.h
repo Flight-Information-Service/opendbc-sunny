@@ -103,9 +103,11 @@ static void hyundai_canfd_rx_hook(const CANPacket_t *msg) {
       update_sample(&angle_meas, angle_meas_new);
     }
 
-    // cruise buttons
+    // cruise buttons. EV3-generation cars broadcast this message with the button fields zeroed;
+    // their buttons are handled from STEERING_BUTTONS_ALT (0x10B) below, so skip it here to keep
+    // the zeroed stream from interleaving with the real one in the edge detection
     const unsigned int button_addr = hyundai_canfd_alt_buttons ? 0x1aaU : 0x1cfU;
-    if (msg->addr == button_addr) {
+    if ((msg->addr == button_addr) && !hyundai_canfd_ev3_gen) {
       bool main_button = false;
       int cruise_button = 0;
       if (msg->addr == 0x1cfU) {
@@ -115,19 +117,7 @@ static void hyundai_canfd_rx_hook(const CANPacket_t *msg) {
       } else {
         cruise_button = (msg->data[4] >> 4) & 0x7U;
         main_button = GET_BIT(msg, 34U);
-        if (!hyundai_canfd_ev3_gen) {
-          // EV3-generation cars carry the LFA button in 0x10B instead
-          mads_button_press = GET_BIT(msg, 39U) ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
-        }
-      }
-      if (hyundai_canfd_ev3_gen && !(hyundai_longitudinal && hyundai_longitudinal_main_cruise_toggleable)) {
-        // EV3 has no cruise main state on the bus; toggle it on main button rising edge.
-        // When hyundai_common_cruise_buttons_check owns this toggle (longitudinal with
-        // hyundai_longitudinal_main_cruise_toggleable set), skip it here to avoid a double toggle.
-        if (main_button && !hyundai_canfd_ev3_main_button_prev) {
-          acc_main_on = !acc_main_on;
-        }
-        hyundai_canfd_ev3_main_button_prev = main_button;
+        mads_button_press = GET_BIT(msg, 39U) ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
       }
       hyundai_common_cruise_buttons_check(cruise_button, main_button);
     }
@@ -174,9 +164,26 @@ static void hyundai_canfd_rx_hook(const CANPacket_t *msg) {
     }
   }
 
-  // KIA_EV3-generation: the LFA button lives in a dedicated E-CAN message
+  // KIA_EV3-generation: all steering wheel buttons live in STEERING_BUTTONS_ALT (0x10B).
+  // The low nibble of byte 10 is a button code (1=RES, 2=SET, 3=GAP, 4=CANCEL, 8=MAIN)
+  // and bit 7 is the LFA button, all verified live
   if (hyundai_canfd_ev3_gen && (msg->bus == pt_bus) && (msg->addr == 0x10BU)) {
     mads_button_press = GET_BIT(msg, 87U) ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
+
+    const unsigned int button_code = msg->data[10] & 0x0FU;
+    const bool main_button = button_code == 8U;
+    const int cruise_button = (button_code < 5U) ? (int)button_code : 0;
+
+    if (!(hyundai_longitudinal && hyundai_longitudinal_main_cruise_toggleable)) {
+      // EV3 has no cruise main state on the bus; toggle it on main button rising edge.
+      // When hyundai_common_cruise_buttons_check owns this toggle (longitudinal with
+      // hyundai_longitudinal_main_cruise_toggleable set), skip it here to avoid a double toggle.
+      if (main_button && !hyundai_canfd_ev3_main_button_prev) {
+        acc_main_on = !acc_main_on;
+      }
+      hyundai_canfd_ev3_main_button_prev = main_button;
+    }
+    hyundai_common_cruise_buttons_check(cruise_button, main_button);
   }
 
   hyundai_common_reset_acc_main_on_mismatches();
